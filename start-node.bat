@@ -19,9 +19,10 @@ echo   [4] Trigger workflow manually (via gh CLI)
 echo   [5] View workflow logs (via gh CLI)
 echo   [6] Stop the workflow (via gh CLI)
 echo   [7] Setup: Add Gemini API key
-echo   [8] Exit
+echo   [8] Troubleshoot workflow errors (Invalid slug)
+echo   [9] Exit
 echo.
-set /p choice="Enter choice (1-8): "
+set /p choice="Enter choice (1-9): "
 
 if "%choice%"=="1" goto INIT
 if "%choice%"=="2" goto PUSH
@@ -30,7 +31,8 @@ if "%choice%"=="4" goto TRIGGER
 if "%choice%"=="5" goto LOGS
 if "%choice%"=="6" goto STOP
 if "%choice%"=="7" goto SETUP_SECRET
-if "%choice%"=="8" goto EXIT
+if "%choice%"=="8" goto TROUBLESHOOT_SLUG
+if "%choice%"=="9" goto EXIT
 
 echo Invalid choice. Try again.
 echo.
@@ -80,18 +82,20 @@ goto MENU
 echo.
 cd /d "%~dp0"
 if not exist ".git" (
-    echo Error: Git not initialized. Use option [1] first.
-    echo.
+    echo Error: Git not initialized. Use option 1 to initialize it.
     pause
     goto MENU
 )
-echo Pushing updates to GitHub...
+echo Adding all changes and pushing to GitHub...
 git add .
-git commit -m "Update browser node config"
-if %errorlevel% neq 0 (
-    echo Nothing new to commit.
-)
+git commit -m "Update browser node files"
 git push
+echo.
+if %errorlevel% neq 0 (
+    echo Push failed. Check your git status and remote.
+) else (
+    echo Done! Changes pushed.
+)
 echo.
 pause
 goto MENU
@@ -100,26 +104,19 @@ goto MENU
 echo.
 cd /d "%~dp0"
 if not exist ".git" (
-    echo Error: Git not initialized. Use option [1] first.
-    echo.
+    echo Error: Git not initialized. Use option 1 to initialize it.
     pause
     goto MENU
 )
-REM Get remote URL and convert to Actions page URL
-for /f "usebackq tokens=*" %%a in (`git remote get-url origin 2^>nul`) do set "RAW_URL=%%a"
-if not defined RAW_URL (
-    echo Could not detect remote URL. Use option [1] to set it up.
-    echo.
+for /f "tokens=2" %%i in ('git remote get-url origin') do set "REPO_URL=%%i"
+if not defined REPO_URL (
+    echo Could not determine GitHub repository URL.
+    echo Please ensure 'git remote add origin' has been run.
     pause
     goto MENU
 )
-REM Clean up URL: remove .git suffix and convert SSH to HTTPS
-set "ACTIONS_URL=!RAW_URL!"
-set "ACTIONS_URL=!ACTIONS_URL:.git=!"
-set "ACTIONS_URL=!ACTIONS_URL:git@github.com:=https://github.com/!"
-set "ACTIONS_URL=!ACTIONS_URL!/actions"
-echo Opening: !ACTIONS_URL!
-start "" "!ACTIONS_URL!"
+start "" "%REPO_URL%/actions"
+echo Opening GitHub Actions in your browser...
 echo.
 pause
 goto MENU
@@ -127,12 +124,19 @@ goto MENU
 :TRIGGER
 echo.
 cd /d "%~dp0"
+if not exist ".git" (
+    echo Error: Git not initialized. Use option 1 to initialize it.
+    pause
+    goto MENU
+)
 echo Triggering workflow manually...
-gh workflow run browser-node.yml
+echo.
+gh workflow run main.yml
+echo.
 if %errorlevel% neq 0 (
-    echo.
-    echo Failed. Make sure GitHub CLI (gh) is installed and authenticated.
-    echo Install: https://cli.github.com/
+    echo Failed to trigger workflow. Make sure you are logged in to gh CLI (gh auth login).
+) else (
+    echo Workflow triggered. Use option 3 or 5 to check status/logs.
 )
 echo.
 pause
@@ -141,12 +145,19 @@ goto MENU
 :LOGS
 echo.
 cd /d "%~dp0"
-echo Fetching latest workflow runs...
+if not exist ".git" (
+    echo Error: Git not initialized. Use option 1 to initialize it.
+    pause
+    goto MENU
+)
+echo Viewing latest workflow logs...
 echo.
-gh run list --workflow=browser-node.yml --limit 5
+gh run view --log
 echo.
-echo To view full logs of a specific run, use:
-echo   gh run view [RUN_ID] --log
+if %errorlevel% neq 0 (
+    echo Failed to view logs. Make sure you are logged in to gh CLI (gh auth login)
+    echo and a workflow run exists.
+)
 echo.
 pause
 goto MENU
@@ -154,14 +165,30 @@ goto MENU
 :STOP
 echo.
 cd /d "%~dp0"
-echo Cancelling the latest running workflow...
-for /f "usebackq" %%r in (`gh run list --workflow=browser-node.yml --status=in_progress --limit 1 --json databaseId -q ".[0].databaseId" 2^>nul`) do (
-    echo Cancelling run %%r...
-    gh run cancel %%r
-    echo Cancelled run %%r
+if not exist ".git" (
+    echo Error: Git not initialized. Use option 1 to initialize it.
+    pause
+    goto MENU
 )
-if %errorlevel% neq 0 (
-    echo No running workflows found, or gh CLI not installed.
+echo Attempting to cancel the latest running workflow...
+echo.
+REM Check if there's an active run before trying to cancel
+gh run list --workflow main.yml --json databaseId,status --jq '.[0] | select(.status == "in_progress" or .status == "queued") | .databaseId' | findstr /r ".*" > NUL
+if %errorlevel% equ 0 (
+    for /f "tokens=*" %%i in ('gh run list --workflow main.yml --json databaseId,status --jq '.[0] | select(.status == "in_progress" or .status == "queued") | .databaseId'') do set "RUN_ID=%%i"
+    if defined RUN_ID (
+        echo Cancelling run ID: %RUN_ID%
+        gh run cancel %RUN_ID%
+        if %errorlevel% neq 0 (
+            echo Failed to cancel workflow run.
+        ) else (
+            echo Workflow run cancelled.
+        )
+    ) else (
+        echo No active workflow runs found to cancel.
+    )
+) else (
+    echo No active workflow runs found to cancel.
 )
 echo.
 pause
@@ -170,36 +197,84 @@ goto MENU
 :SETUP_SECRET
 echo.
 cd /d "%~dp0"
-echo ============================================
-echo   Gemini API Key Setup
-echo   (stored as GitHub Secret)
-echo ============================================
-echo.
-echo The same key is used across all Gemini models.
-echo Failover rotates: 2.5-flash, 2.0-flash, 1.5-flash, 1.5-pro
-echo.
-set /p gemkey="Paste your Gemini API key: "
-if "!gemkey!"=="" (
-    echo No key provided. Cancelled.
-    echo.
+if not exist ".git" (
+    echo Error: Git not initialized. Use option 1 to initialize it.
     pause
     goto MENU
 )
-gh secret set GEMINI_API_KEY --body "!gemkey!"
-if !errorlevel! equ 0 (
-    echo.
-    echo Gemini key saved successfully!
-) else (
-    echo.
-    echo Failed. Make sure GitHub CLI (gh) is installed and authenticated.
-    echo Install: https://cli.github.com/
+echo ============================================
+echo   Setup: Add Gemini API Key
+echo ============================================
+echo.
+echo This will add your Gemini API key as a GitHub secret
+echo named 'GEMINI_API_KEY' to your repository.
+echo This key is used by the OpenClaw agent in your workflow.
+echo.
+set /p GEMINI_KEY="Enter your Gemini API Key: "
+if "%GEMINI_KEY%"=="" (
+    echo No key entered. Skipping secret setup.
+    pause
+    goto MENU
 )
+echo Setting GitHub secret 'GEMINI_API_KEY'...
+echo %GEMINI_KEY% | gh secret set GEMINI_API_KEY
+echo.
+if %errorlevel% neq 0 (
+    echo Failed to set secret. Make sure you are logged in to gh CLI (gh auth login).
+) else (
+    echo Secret 'GEMINI_API_KEY' added successfully to your repository.
+)
+echo.
+pause
+goto MENU
+
+:TROUBLESHOOT_SLUG
+echo.
+echo ==================================================================
+echo   Troubleshooting: "Error: Invalid slug: 0xPasho/rent-my-browser"
+echo ==================================================================
+echo.
+echo This error indicates that the GitHub Actions workflow is trying
+echo to install an OpenClaw skill, but the provided slug is invalid.
+echo.
+echo **Likely Causes & Solutions:**
+echo 1.  **Incorrect Skill Slug:** The workflow (e.g., in .github/workflows/main.yml
+echo     or a script like failover.sh) might have a line like:
+echo     `openclaw install skill 0xPasho/rent-my-browser`
+echo     or similar.
+echo     -   **If you intend to install a public skill:** Ensure the slug is
+echo         correct (e.g., `openclaw install skill web_search`).
+echo     -   **If `rent-my-browser` is your project, not a skill to install:**
+echo         The command might be misplaced or incorrect. You might be trying
+echo         to run your project, not install it as a skill.
+echo         Check if the command should be `openclaw start` or similar,
+echo         or if the skill installation is even necessary.
+echo     -   **If it's a custom skill from a GitHub repo:** The `openclaw install skill`
+echo         command usually expects a simple slug, not a full GitHub path.
+echo         You might need to clone the repo manually and then use `openclaw install skill --local /path/to/skill`
+echo         or ensure the skill is properly published/configured for direct installation.
+echo.
+echo 2.  **Hardcoded/Outdated Slug:** The slug `0xPasho/rent-my-browser` might be
+echo     hardcoded from an example. If your repository is different (e.g.,
+echo     `your_user/your_repo`), you need to update this in your workflow files.
+echo.
+echo **Action Steps:**
+echo a.  **View Workflow Logs:** Use option [5] to view the full logs and pinpoint
+echo     where the `openclaw install skill` command is being executed.
+echo b.  **Inspect Workflow Files:** Go to your GitHub repository, navigate to
+echo     the `.github/workflows/` directory, and open your `.yml` workflow file
+echo     (e.g., `main.yml`). Also, check any scripts called by the workflow
+echo     (like `failover.sh` if it exists).
+echo     Look for `openclaw install skill` commands and verify the slug.
+echo c.  **Consult OpenClaw Docs:** Refer to the OpenClaw documentation for
+echo     the correct way to install skills or run your specific project.
+echo     (https://docs.openclaw.ai/)
 echo.
 pause
 goto MENU
 
 :EXIT
 echo.
-echo Goodbye! Your node keeps running on GitHub Actions.
-endlocal
-exit /b 0
+echo Exiting Rent My Browser - Node Manager.
+echo.
+exit /b
