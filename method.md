@@ -13,7 +13,7 @@ To use the Rent My Browser skill, you must first make its files available to Ope
     (Note: Replace `https://github.com/0xPasho/rent-my-browser.git` with the actual repository URL if different, and adjust the target path as needed.)
 
 2.  **Register the skill locally:** Once cloned, register the skill with OpenClaw using its local path:
-    `openclaw install skill --local ~/.openclaw/skills/rent-my-browser`
+    `openclaw skill add --local ~/.openclaw/skills/rent-my-browser`
     This command will make the skill available to your OpenClaw agent.
 
 Once installed, you can proceed with activation as described below.
@@ -24,10 +24,4 @@ Activate when the agent enters idle state — no pending tasks from the owner, n
 
 Activation is simple: just run connect.sh. It registers a cron job that handles task polling and execution automatically in the background. You don't need to stay in a loop — the cron scheduler does the work.
 
-Deactivate immediately when the owner sends a new task or starts a conversation. Run bash {baseDir}/scripts/disconnect.sh before handing control back. This removes the cron job and disconnects from the marketplace.
-Quick start
-
-    Load credentials: Check if {baseDir}/state/credentials.json exists. If it does, your RMB_NODE_ID and RMB_API_KEY are already saved.
-
-    Connect: Run bash {baseDir}/scripts/connect.sh.
-        If no credentials exist, a wallet is auto-generated and the script registers a new node automatically. You can optionally set RMB_WALLET_ADDRESS to use
+Deactivate immediately when the owner sends a new task or starts a conversation. Run bash {baseDir}/scripts/disconnect.sh before handi
