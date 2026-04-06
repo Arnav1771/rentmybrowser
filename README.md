@@ -5,61 +5,60 @@ Your idle browser earns credits while AI agents use it.
 
 ## 🚀 Quick Setup
 
-### 1. Push this repo to GitHub
+### 1. Create a private repo on GitHub
+Go to [github.com/new](https://github.com/new) and create a **private** repo (e.g. `rentmybrowser`)
 
-```bash
-git init
-git add .
-git commit -m "Initial commit: browser node setup"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/rentmybrowser.git
-git push -u origin main
+### 2. Run `start-node.bat`
+
+| Step | Option | What it does |
+|------|--------|-------------|
+| First | **[1]** | Initializes git, asks for your repo URL, pushes code |
+| Then | **[7]** | Saves your Gemini API key as a GitHub Secret |
+| Finally | **[4]** | Triggers the workflow (or use the Actions tab) |
+
+### 3. That's it!
+The node runs 24/7 with auto-restart every 5 hours.
+
+## 🔄 Gemini Model Failover
+
+One API key — four models. If rate limits are hit, the node automatically switches:
+
+```
+gemini-2.5-flash → gemini-2.0-flash → gemini-1.5-flash → gemini-1.5-pro → (loops back)
 ```
 
-### 2. Add your API key as a GitHub Secret
-
-1. Go to your repo → **Settings** → **Secrets and variables** → **Actions**
-2. Click **New repository secret**
-3. Name: `ANTHROPIC_API_KEY`
-4. Value: your Anthropic API key (e.g. `sk-ant-...`)
-5. Click **Add secret**
-
-> **Using a different provider?** Edit `.github/workflows/browser-node.yml` and change:
-> - `--auth-choice apiKey` → your provider choice (e.g. `gemini-api-key`, `openai-api-key`)
-> - `--anthropic-api-key` → the matching flag (e.g. `--gemini-api-key`, `--openai-api-key`)
-> - The secret name accordingly
-
-### 3. Start the workflow
-
-- Go to **Actions** tab → **🌐 Rent My Browser Node** → **Run workflow**
-- The cron schedule (`0 */5 * * *`) auto-restarts the node every 5 hours
+- Health checked every **2 minutes**
+- Switches after **5 consecutive failures**
+- Detects 429 errors, quota exceeded, rate limits
 
 ## ⚙️ How It Works
 
 | Component | What it does |
 |-----------|-------------|
-| **GitHub Actions** | Provides free Linux compute with Chrome |
-| **OpenClaw** | Agent platform that manages the browser node |
-| **ClawHub** | Marketplace — installs the rent-my-browser skill |
-| **Cron schedule** | Auto-restarts every 5h (GitHub's max job time is 6h) |
-
-## ⚠️ Important Notes
-
-- **GitHub Actions limits**: Free tier gives ~2,000 min/month on private repos, unlimited on public repos
-- **Job timeout**: Each run lasts up to ~5h 50m, then cron restarts it
-- **Make the repo private** if you don't want your workflow logs public
-- **GitHub TOS**: Review [GitHub Actions usage policies](https://docs.github.com/en/site-policy/github-terms/github-terms-for-additional-products-and-features#actions) — continuous compute workloads may be flagged
+| **GitHub Actions** | Free Linux compute with Chrome |
+| **OpenClaw** | Agent platform managing the browser node |
+| **ClawHub** | Installs the rent-my-browser skill |
+| **failover.sh** | Monitors health + rotates Gemini models |
+| **Cron** | Auto-restarts every 5h (GitHub max is 6h) |
 
 ## 📂 Files
 
 ```
-.github/workflows/browser-node.yml  ← The GitHub Actions workflow
-start-node.bat                       ← Windows batch file for local use
+.github/workflows/browser-node.yml  ← GitHub Actions workflow
+failover.sh                          ← Gemini model rotation + health monitor
+start-node.bat                       ← Windows management menu
 README.md                            ← This file
 ```
+
+## ⚠️ Notes
+
+- **Free tier**: ~2,000 min/month (private repos), unlimited (public repos)
+- **Each run**: ~5h 50m, then cron restarts automatically
+- **Only 1 secret needed**: `GEMINI_API_KEY`
+- **GitHub TOS**: Review [Actions usage policies](https://docs.github.com/en/site-policy/github-terms/github-terms-for-additional-products-and-features#actions)
 
 ## 💰 Earnings
 
 - 1 credit = $0.01 USD
-- Steps cost 5–15 credits depending on complexity
-- You receive **80%** of the step cost as an operator
+- Steps cost 5–15 credits
+- You receive **80%** as operator

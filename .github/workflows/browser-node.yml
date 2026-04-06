@@ -1,26 +1,27 @@
 name: 🌐 Rent My Browser Node
 
 on:
-  # Manual trigger from GitHub UI
   workflow_dispatch:
-
-  # Auto-restart: runs every 5 hours to stay within the 6-hour job limit
   schedule:
     - cron: '0 */5 * * *'
 
 jobs:
   browser-node:
     runs-on: ubuntu-latest
-    timeout-minutes: 350  # ~5h 50m, just under GitHub's 6-hour limit
+    timeout-minutes: 350
+
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
     steps:
-      # ─── 1. Install Node.js 22 ───
       - name: 📦 Setup Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      # ─── 2. Install Google Chrome ───
+      - name: 📂 Checkout
+        uses: actions/checkout@v4
+
       - name: 🌐 Install Chrome
         run: |
           sudo apt-get update
@@ -30,63 +31,16 @@ jobs:
           }
           google-chrome --version
 
-      # ─── 3. Install OpenClaw ───
       - name: 🦞 Install OpenClaw
         run: |
           curl -fsSL https://openclaw.ai/install.sh | bash
           echo "$HOME/.openclaw/bin" >> $GITHUB_PATH
 
-      # ─── 4. Onboard (non-interactive) ───
-      - name: ⚙️ Onboard OpenClaw
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          openclaw onboard --non-interactive \
-            --mode local \
-            --auth-choice apiKey \
-            --anthropic-api-key "$ANTHROPIC_API_KEY" \
-            --secret-input-mode plaintext \
-            --gateway-port 18789 \
-            --gateway-bind loopback \
-            --install-daemon \
-            --daemon-runtime node \
-            --skip-skills \
-            --accept-risk
-
-      # ─── 5. Install ClawHub CLI ───
       - name: 📥 Install ClawHub CLI
         run: npm i -g clawhub
 
-      # ─── 6. Install Rent My Browser Skill ───
-      - name: 🔧 Install rent-my-browser skill
-        run: clawhub install 0xPasho/rent-my-browser
+      - name: 🔧 Prepare failover script
+        run: chmod +x ./failover.sh
 
-      # ─── 7. Verify Gateway is running ───
-      - name: ✅ Verify Gateway Status
-        run: |
-          sleep 5
-          openclaw gateway status || echo "Gateway starting up..."
-
-      # ─── 8. Keep alive — heartbeat loop ───
-      - name: 💚 Keep Node Alive (heartbeat loop)
-        run: |
-          echo "============================================"
-          echo "  🌐 Browser Node is ONLINE and earning!"
-          echo "  ⏰ Started at: $(date -u)"
-          echo "  🔄 Will auto-restart via cron schedule"
-          echo "============================================"
-          
-          SECONDS_REMAINING=20700  # ~5h 45m in seconds
-          HEARTBEAT_INTERVAL=60
-          
-          while [ $SECONDS_REMAINING -gt 0 ]; do
-            echo "[$(date -u)] 💚 Node alive | Remaining: $((SECONDS_REMAINING / 3600))h $((SECONDS_REMAINING % 3600 / 60))m"
-            
-            # Check gateway health
-            openclaw gateway status 2>/dev/null || echo "⚠️ Gateway check returned non-zero (may still be running)"
-            
-            sleep $HEARTBEAT_INTERVAL
-            SECONDS_REMAINING=$((SECONDS_REMAINING - HEARTBEAT_INTERVAL))
-          done
-          
-          echo "⏰ Graceful shutdown — cron will restart this workflow shortly."
+      - name: 🚀 Start Node with Gemini Model Failover
+        run: ./failover.sh

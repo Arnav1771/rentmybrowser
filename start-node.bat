@@ -18,7 +18,7 @@ echo   [3] Open GitHub Actions (check status)
 echo   [4] Trigger workflow manually (via gh CLI)
 echo   [5] View workflow logs (via gh CLI)
 echo   [6] Stop the workflow (via gh CLI)
-echo   [7] Setup: Add Anthropic API key as secret
+echo   [7] Setup: Add Gemini API key
 echo   [8] Exit
 echo.
 set /p choice="Enter choice (1-8): "
@@ -170,23 +170,29 @@ goto MENU
 :SETUP_SECRET
 echo.
 cd /d "%~dp0"
-echo Setting up ANTHROPIC_API_KEY secret...
+echo ============================================
+echo   Gemini API Key Setup
+echo   (stored as GitHub Secret)
+echo ============================================
 echo.
-set /p apikey="Paste your Anthropic API key: "
-if "!apikey!"=="" (
+echo The same key is used across all Gemini models.
+echo Failover rotates: 2.5-flash, 2.0-flash, 1.5-flash, 1.5-pro
+echo.
+set /p gemkey="Paste your Gemini API key: "
+if "!gemkey!"=="" (
     echo No key provided. Cancelled.
     echo.
     pause
     goto MENU
 )
-gh secret set ANTHROPIC_API_KEY --body "!apikey!"
-if %errorlevel% neq 0 (
+gh secret set GEMINI_API_KEY --body "!gemkey!"
+if !errorlevel! equ 0 (
+    echo.
+    echo Gemini key saved successfully!
+) else (
     echo.
     echo Failed. Make sure GitHub CLI (gh) is installed and authenticated.
     echo Install: https://cli.github.com/
-) else (
-    echo.
-    echo Secret set successfully!
 )
 echo.
 pause
