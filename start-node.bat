@@ -74,181 +74,158 @@ echo.
 if %errorlevel% neq 0 (
     echo Push failed. Make sure the repo exists on GitHub and you are authenticated.
 ) else (
-    echo Done! Now go to your repo's Actions tab to start the workflow.
+    echo Initial push successful!
 )
-echo.
 pause
 goto MENU
 
 :PUSH
 echo.
 cd /d "%~dp0"
-if not exist ".git" (
-    echo Not a git repository. Please run option [1] first.
-    pause
-    goto MENU
-)
 echo Pushing updates to GitHub...
 git add .
-git commit -m "Update browser node files"
+git commit -m "Update browser node"
 git push
-echo.
 if %errorlevel% neq 0 (
-    echo Push failed. Check your git status and authentication.
+    echo Push failed.
 ) else (
-    echo Updates pushed successfully.
+    echo Push successful!
 )
-echo.
 pause
 goto MENU
 
 :OPEN_ACTIONS
 echo.
-echo Opening GitHub Actions in your browser...
-start "" "https://github.com/%USERNAME%/%REPO_NAME%/actions"
-echo (Replace %USERNAME%/%REPO_NAME% with your actual repo path if needed)
-echo.
+echo Opening GitHub Actions...
+rem Attempt to parse repo URL from git remote, or prompt if not found.
+for /f "tokens=2 delims= " %%a in ('git remote get-url origin 2^>nul') do set "REMOTE_URL=%%a"
+if defined REMOTE_URL (
+    echo Opening actions for %REMOTE_URL%
+    start "" "%REMOTE_URL%/actions"
+) else (
+    set /p REPO_URL_PROMPT="Enter your GitHub repo URL (e.g., https://github.com/user/repo): "
+    if not "%REPO_URL_PROMPT%"=="" (
+        start "" "%REPO_URL_PROMPT%/actions"
+    ) else (
+        echo No URL provided. Cannot open GitHub Actions.
+    )
+)
 pause
 goto MENU
 
 :TRIGGER
 echo.
 echo Triggering workflow manually via gh CLI...
-echo (Requires GitHub CLI 'gh' to be installed and authenticated)
+echo Make sure you are logged in to gh CLI: gh auth login
 gh workflow run main.yml
-echo.
 if %errorlevel% neq 0 (
-    echo Failed to trigger workflow. Ensure 'gh' CLI is installed, authenticated,
-    echo and 'main.yml' is the correct workflow file name.
+    echo Failed to trigger workflow. Is gh CLI installed and authenticated?
 ) else (
-    echo Workflow triggered. Use option [5] to view logs.
+    echo Workflow triggered.
 )
-echo.
 pause
 goto MENU
 
 :LOGS
 echo.
 echo Viewing workflow logs via gh CLI...
-echo (Requires GitHub CLI 'gh' to be installed and authenticated)
-gh run list --workflow main.yml --limit 1
-echo.
-set /p run_id="Enter the run ID to view logs (e.g., 1234567890): "
-if "%run_id%"=="" (
-    echo No run ID provided.
+echo Fetching latest workflow run...
+for /f "tokens=*" %%i in ('gh run list --workflow main.yml --limit 1 --json databaseId -q ".[0].databaseId" 2^>nul') do set "RUN_ID=%%i"
+if not "%RUN_ID%"=="" (
+    echo Showing logs for run ID: %RUN_ID%
+    gh run view %RUN_ID% --log
 ) else (
-    gh run view %run_id% --log
+    echo No recent workflow runs found for main.yml.
 )
-echo.
-if %errorlevel% neq 0 (
-    echo Failed to view logs. Ensure 'gh' CLI is installed, authenticated,
-    echo and the run ID is correct.
-)
-echo.
 pause
 goto MENU
 
 :STOP
 echo.
-echo Stopping the last workflow run via gh CLI...
-echo (Requires GitHub CLI 'gh' to be installed and authenticated)
-gh run list --workflow main.yml --limit 1
-echo.
-set /p run_id="Enter the run ID to stop (e.g., 1234567890): "
-if "%run_id%"=="" (
-    echo No run ID provided.
+echo Stopping the latest workflow run via gh CLI...
+echo Fetching latest workflow run...
+for /f "tokens=*" %%i in ('gh run list --workflow main.yml --limit 1 --json databaseId -q ".[0].databaseId" 2^>nul') do set "RUN_ID=%%i"
+if not "%RUN_ID%"=="" (
+    echo Stopping run ID: %RUN_ID%
+    gh run cancel %RUN_ID%
+    if %errorlevel% neq 0 (
+        echo Failed to stop workflow run.
+    ) else (
+        echo Workflow run cancelled.
+    )
 ) else (
-    gh run cancel %run_id%
+    echo No recent workflow runs found for main.yml to stop.
 )
-echo.
-if %errorlevel% neq 0 (
-    echo Failed to stop workflow. Ensure 'gh' CLI is installed, authenticated,
-    echo and the run ID is correct.
-) else (
-    echo Workflow run %run_id% cancelled.
-)
-echo.
 pause
 goto MENU
 
 :SETUP_SECRET
 echo.
-echo ============================================
-echo   Setup: Add Gemini API Key
-echo ============================================
-echo.
-echo This option helps you add your Gemini API key as a GitHub secret.
-echo This secret will be used by your GitHub Actions workflow.
-echo.
-echo 1. Go to your GitHub repository settings:
-echo    https://github.com/YOUR_USER/YOUR_REPO/settings/secrets/actions
-echo    (Replace YOUR_USER/YOUR_REPO with your actual repository path)
-echo.
-echo 2. Click "New repository secret".
-echo.
-echo 3. For "Name", enter: GEMINI_API_KEY
-echo.
-echo 4. For "Value", paste your Gemini API key.
-echo    You can get your key from: https://ai.google.dev/
-echo.
-echo 5. Click "Add secret".
-echo.
-echo Your workflow will now have access to the GEMINI_API_KEY.
-echo.
+echo Setting up Gemini API key...
+echo This will add your Gemini API key as a GitHub secret.
+echo Make sure you are logged in to gh CLI: gh auth login
+set /p GEMINI_API_KEY="Enter your Gemini API Key: "
+if "%GEMINI_API_KEY%"=="" (
+    echo No API key provided. Skipping secret setup.
+    pause
+    goto MENU
+)
+gh secret set GEMINI_API_KEY --body "%GEMINI_API_KEY%"
+if %errorlevel% neq 0 (
+    echo Failed to set GitHub secret.
+) else (
+    echo Gemini API Key set as GitHub secret 'GEMINI_API_KEY'.
+)
 pause
 goto MENU
 
 :TROUBLESHOOT_SLUG
 echo.
-echo ============================================
-echo   Troubleshoot Workflow Errors (Invalid slug)
-echo ============================================
+echo Troubleshooting workflow errors (Invalid slug)...
+echo This usually means an OpenClaw skill or tool is not correctly installed or recognized.
+echo Attempting to install 'rent-my-browser' skill for the default agent 'main'.
 echo.
-echo If your workflow is failing with an "Invalid slug" error,
-echo it often means the `gh` CLI cannot determine your repository context.
-echo.
-echo This can happen if:
-echo 1. You haven't initialized a git repository in this directory (run option [1]).
-echo 2. Your git remote 'origin' is not set to a GitHub repository.
-echo    Check with: `git remote -v`
-echo    Set it with: `git remote set-url origin https://github.com/YOUR_USER/YOUR_REPO.git`
-echo 3. You are not authenticated with the `gh` CLI.
-echo    Run: `gh auth login`
-echo.
-echo Ensure your local git repository is correctly linked to your GitHub repo.
+echo 📥 Installing rent-my-browser skill...
+rem FIX: Changed 'openclaw install' to 'openclaw agent skill add main'
+openclaw agent skill add main rent-my-browser
+if %errorlevel% neq 0 (
+    echo ❌ Failed to install rent-my-browser skill. Please check the slug or try again.
+    echo Ensure OpenClaw is installed and configured, and 'main' is your agent name.
+) else (
+    echo ✅ Successfully installed rent-my-browser skill.
+)
 echo.
 pause
 goto MENU
 
 :OPENCLAW_INFO
 echo.
-echo ============================================
-echo   OpenClaw Information & Troubleshooting
-echo ============================================
+echo OpenClaw Information & Troubleshooting
+echo -------------------------------------
 echo.
-echo It appears OpenClaw is a component or dependency for your setup.
-echo The provided log indicates OpenClaw was installed successfully on Linux,
-echo but a subsequent process failed with "Error: Process completed with exit code 1."
-echo and "main: line 2598: /dev/tty: No such device or address".
+echo Checking OpenClaw installation:
+openclaw --version
+if %errorlevel% neq 0 (
+    echo ❌ OpenClaw command not found. Please install OpenClaw.
+    echo Docs: https://docs.openclaw.ai/
+) else (
+    echo ✅ OpenClaw is installed.
+)
 echo.
-echo This often happens in non-interactive CI/CD environments.
+echo Listing OpenClaw agents:
+openclaw agent list
 echo.
-echo If you need to manually install OpenClaw on a Linux environment (e.g., SSH into a runner):
-echo   curl -fsSL https://openclaw.ai/install.sh | bash
+echo Listing skills for agent 'main':
+openclaw agent skill list main
 echo.
-echo To troubleshoot issues related to OpenClaw in your GitHub Actions workflow:
-echo 1. Check your workflow YAML file for OpenClaw installation steps.
-echo 2. Use option [5] "View workflow logs" to inspect recent runs for OpenClaw-related errors.
-echo 3. Ensure your workflow environment is compatible with OpenClaw's requirements.
-echo 4. The error "/dev/tty: No such device or address" suggests an interactive prompt
-echo    or TTY access was expected but not available in the CI environment.
-echo    Check OpenClaw's documentation for non-interactive installation/usage.
+echo Checking Node.js version (OpenClaw recommends Node 22+):
+node --version
 echo.
 pause
 goto MENU
 
 :EXIT
-echo Exiting Node Manager.
-endlocal
+echo.
+echo Exiting Node Manager. Goodbye!
+echo.
 exit /b
-```
