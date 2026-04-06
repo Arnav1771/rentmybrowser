@@ -7,6 +7,20 @@ set -euo pipefail
 #  All models use the same GEMINI_API_KEY
 # ═══════════════════════════════════════════════════════════════
 
+# ─── Ensure OpenClaw is installed ───
+if ! command -v openclaw &> /dev/null; then
+    echo "🦞 OpenClaw not found. Installing..."
+    curl -fsSL https://openclaw.ai/install.sh | bash
+    # Verify installation
+    if ! command -v openclaw &> /dev/null; then
+        echo "❌ OpenClaw installation failed. Please check the logs. Exiting."
+        exit 1
+    fi
+    echo "✅ OpenClaw installed successfully."
+else
+    echo "✅ OpenClaw already installed."
+fi
+
 LOG_FILE="/tmp/openclaw-node.log"
 HEALTH_CHECK_INTERVAL=120       # Check every 2 minutes
 MAX_FAILURES=5                  # Switch model after 5 consecutive failures
@@ -43,12 +57,13 @@ onboard_model() {
     echo "  ⏰ $(date -u)"
     echo "═══════════════════════════════════════════"
 
-    # Stop existing gateway
+    # Stop existing gateway to ensure a clean start
     openclaw gateway stop 2>/dev/null || true
     sleep 3
 
     # Re-onboard with specific model via Gemini's OpenAI-compatible endpoint
-    openclaw onboard --non-interactive \
+    # The --install-daemon flag should handle starting the gateway.
+    if ! openclaw onboard --non-interactive \
         --mode local \
         --auth-choice custom-api-key \
         --custom-base-url "https://generativelanguage.googleapis.com/v1beta/openai/" \
@@ -62,87 +77,68 @@ onboard_model() {
         --install-daemon \
         --daemon-runtime node \
         --skip-skills \
-        --accept-risk
-
-    # Fix: The previous line 'echo "📥 Install' was incomplete and likely caused the skill installation error.
-    # We assume the 'rent-my-browser' skill is intended to be installed,
-    # and we use the common OpenClaw skill slug for it.
-    echo "📥 Installing rent-my-browser skill..."
-    openclaw install skill openclaw/rent-my-browser || {
-        echo "❌ Failed to install rent-my-browser skill. Please check the slug or try again."
-        exit 1
-    }
-
-    # Start the gateway service
-    openclaw gateway start --daemon || {
-        echo "❌ Failed to start OpenClaw gateway service. Exiting."
-        exit 1
-    }
-
-    echo "Gateway service enabled. Updated ~/.openclaw/openclaw.json"
-    echo "Workspace OK: ~/.openclaw/workspace"
-    echo "Sessions OK: ~/.openclaw/agents/main/sessions"
-
-    # Check Node.js version (warning, not critical for script execution)
-    if ! openclaw --version | grep -q "Node 22.14+"; then
-        echo "System Node $(node -v) at $(which node) is below the required Node 22.14+. Using $(openclaw --version | grep -oP 'Using \K[^ ]+node[^ ]+') for the daemon. Install Node 24 (recommended) or Node 22 LTS from nodejs.org or Homebrew."
+        --accept-risk \
+        --log-file "$LOG_FILE"; then
+        echo "❌ OpenClaw onboarding failed for model $model."
+        return 1 # Indicate failure
     fi
 
-    echo "Installed systemd service: ~/.config/systemd/user/openclaw-gateway.service"
-    echo "Agents: main (default)"
-    echo "Heartbeat interval: 30m (main)"
-    echo "Session store (main): ~/.openclaw/agents/main/sessions/sessions.json (0 entries)"
-    echo "Tip: run \`openclaw configure --section web\` to store your Brave API key for web_search. Docs: https://docs.openclaw.ai/tools/web"
+    # Verify gateway status after onboarding
+    if ! openclaw gateway status &>/dev/null; then
+        echo "❌ OpenClaw gateway for model $model is not running after onboarding. Attempting to start explicitly..."
+        if ! openclaw gateway start --daemon-runtime node --log-file "$LOG_FILE"; then
+            echo "❌ Failed to start OpenClaw gateway for model $model."
+            return 1 # Indicate failure to the calling function/loop
+        fi
+    fi
 
+    echo "✅ OpenClaw gateway for model $model started successfully."
     CURRENT_MODEL="$model"
-    FAILURE_COUNT=0 # Reset failure count on successful onboarding
-}
-
-# ─── Health check function ───
-check_health() {
-    # Check if the gateway is running and responsive
-    if curl -s http://localhost:18789/v1/models >/dev/null; then
-        return 0 # Healthy
-    else
-        return 1 # Unhealthy
-    fi
+    FAILURE_COUNT=0 # Reset failure count on successful model switch
+    return 0
 }
 
 # ─── Main loop ───
-main() {
-    # Initial onboarding with the first model
-    onboard_model "${MODELS[$MODEL_INDEX]}"
+start_time=$(date +%s)
+end_time=$((start_time + TOTAL_RUNTIME))
 
-    START_TIME=$(date +%s)
+# Initial onboarding
+echo "🚀 Starting initial onboarding with model: ${MODELS[MODEL_INDEX]}..."
+if ! onboard_model "${MODELS[MODEL_INDEX]}"; then
+    echo "Fatal: Initial onboarding failed. Exiting."
+    exit 1
+fi
 
-    while true; do
-        CURRENT_TIME=$(date +%s)
-        ELAPSED_TIME=$((CURRENT_TIME - START_TIME))
+while true; do
+    current_time=$(date +%s)
+    if [[ "$current_time" -ge "$end_time" ]]; then
+        echo "⏱️ Total runtime reached. Exiting."
+        break
+    fi
 
-        if [[ "$ELAPSED_TIME" -ge "$TOTAL_RUNTIME" ]]; then
-            echo "⏱️ Total runtime of $TOTAL_RUNTIME seconds reached. Exiting."
-            break
-        fi
+    echo "💖 Health check for model $CURRENT_MODEL at $(date -u)"
+    # Perform a health check by checking the gateway status.
+    # For a more robust check, consider making a dummy API request through the gateway.
+    if openclaw gateway status &>/dev/null; then
+        echo "✅ Gateway is healthy."
+        FAILURE_COUNT=0
+    else
+        echo "❌ Gateway for model $CURRENT_MODEL is unhealthy or not running."
+        FAILURE_COUNT=$((FAILURE_COUNT + 1))
+        echo "  Consecutive failures: $FAILURE_COUNT / $MAX_FAILURES"
 
-        echo "🩺 Performing health check for $CURRENT_MODEL at $(date -u)..."
-        if check_health; then
-            echo "✅ Gateway is healthy."
-            FAILURE_COUNT=0
-        else
-            echo "❌ Gateway is unhealthy."
-            FAILURE_COUNT=$((FAILURE_COUNT + 1))
-            echo "Failure count: $FAILURE_COUNT/$MAX_FAILURES"
-
-            if [[ "$FAILURE_COUNT" -ge "$MAX_FAILURES" ]]; then
-                echo "🚨 Max failures reached for $CURRENT_MODEL. Switching model..."
-                MODEL_INDEX=$(( (MODEL_INDEX + 1) % ${#MODELS[@]} ))
-                onboard_model "${MODELS[$MODEL_INDEX]}"
+        if [[ "$FAILURE_COUNT" -ge "$MAX_FAILURES" ]]; then
+            echo "🚨 Max failures reached for model $CURRENT_MODEL. Switching model..."
+            MODEL_INDEX=$(( (MODEL_INDEX + 1) % ${#MODELS[@]} ))
+            if ! onboard_model "${MODELS[MODEL_INDEX]}"; then
+                echo "Fatal: Failed to onboard new model ${MODELS[MODEL_INDEX]}. Exiting."
+                exit 1
             fi
         fi
+    fi
 
-        sleep "$HEALTH_CHECK_INTERVAL"
-    done
-}
+    sleep "$HEALTH_CHECK_INTERVAL"
+done
 
-# ─── Run the main function ───
-main
+echo "👋 Script finished. Stopping OpenClaw gateway."
+openclaw gateway stop 2>/dev/null || true
