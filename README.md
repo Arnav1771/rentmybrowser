@@ -55,5 +55,5 @@ README.md                            ← This file
 - **Free tier**: ~2,000 min/month (private repos), unlimited (public repos)
 - **Each run**: ~5h 50m, then cron restarts automatically
 - **Only 1 secret needed**: `GEMINI_API_KEY`
-- **GitHub TOS**: Review [Actions usage policies](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service)
-- **Skill Installation Error**: If you encounter "Error: Invalid slug: 0xPasho/rent-my-browser" during skill installation, ensure the skill is installed using its correct name `rent-my-browser` (without the `0xPasho/` prefix) in your workflow configuration.
+- **GitHub TOS**: Review [Actions usage policies](https://docs.github.com/en/site-policy/github-terms/github-t
+- **OpenClaw Setup Error**: After OpenClaw is successfully installed (via `curl -fsSL https://openclaw.ai/install.sh | bash` in the workflow), if you encounter `main: line 2598: /dev/tty: No such device or address` during the "Starting setup" phase, this indicates an attempt to interact with a TTY in a non-interactive GitHub Actions environment. This might require adjustments to the workflow's OpenClaw post-installation setup commands or an updated version of the `start-node.bat` script.
