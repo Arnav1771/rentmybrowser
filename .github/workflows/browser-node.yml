@@ -36,12 +36,12 @@ jobs:
           sudo apt-get install -y firefox
           firefox --version
 
-      # ─── Non-interactive OpenClaw install ───
+      # ─── Install OpenClaw via npm directly (skips interactive setup wizard) ───
       - name: 🦞 Install OpenClaw
         run: |
-          # redirect stdin from /dev/null so the script can't read from /dev/tty
-          curl -fsSL https://openclaw.ai/install.sh | CI=1 NONINTERACTIVE=1 bash </dev/null
-          echo "$HOME/.openclaw/bin" >> "$GITHUB_PATH"
+          npm i -g openclaw
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH" || true
+          echo "$HOME/.openclaw/bin" >> "$GITHUB_PATH" || true
 
       - name: 📥 Install ClawHub CLI
         run: npm i -g clawhub
