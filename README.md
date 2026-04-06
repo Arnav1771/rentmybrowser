@@ -55,10 +55,5 @@ README.md                            ← This file
 - **Free tier**: ~2,000 min/month (private repos), unlimited (public repos)
 - **Each run**: ~5h 50m, then cron restarts automatically
 - **Only 1 secret needed**: `GEMINI_API_KEY`
-- **GitHub TOS**: Review [Actions usage policies](https://docs.github.com/en/site-policy/github-terms/github-terms-for-additional-products-and-features#actions)
-
-## 💰 Earnings
-
-- 1 credit = $0.01 USD
-- Steps cost 5–15 credits
-- You receive **80%** as operator
+- **GitHub TOS**: Review [Actions usage policies](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service)
+- **Skill Installation Error**: If you encounter "Error: Invalid slug: 0xPasho/rent-my-browser" during skill installation, ensure the skill is installed using its correct name `rent-my-browser` (without the `0xPasho/` prefix) in your workflow configuration.
