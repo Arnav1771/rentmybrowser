@@ -5,3 +5,5 @@ node_modules/
 Thumbs.db
 .openclaw/
 .openclawrc
+tmp/
+*.tmp
