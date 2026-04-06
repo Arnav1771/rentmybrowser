@@ -56,4 +56,4 @@ README.md                            ← This file
 - **Each run**: ~5h 50m, then cron restarts automatically
 - **Only 1 secret needed**: `GEMINI_API_KEY`
 - **GitHub TOS**: Review [Actions usage policies](https://docs.github.com/en/site-policy/github-terms/github-t
-- **OpenClaw Setup Error**: After OpenClaw is successfully installed (via `curl -fsSL https://openclaw.ai/install.sh | bash` in the workflow), if you encounter `main: line 2598: /dev/tty: No such device or address` during the "Starting setup" phase, this indicates an attempt to interact with a TTY in a non-interactive GitHub Actions environment. This might require adjustments to the workflow's OpenClaw post-installation setup commands or an updated version of the `start-node.bat` script.
+- **Skill Installation Error**: If you encounter `error: unknown command 'install'` during skill setup, ensure your `openclaw` CLI is up-to-date. The correct command for installing skills is typically `openclaw skill install <skill-slug>`.
