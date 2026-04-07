@@ -69,13 +69,9 @@ onboard_model() {
     fi
 
     echo "📥 Installing rent-my-browser skill..."
-    # The 'install' command for skills is deprecated/incorrect. Use 'skill add'.
-    if ! openclaw skill add rent-my-browser; then
-        echo "❌ Failed to install rent-my-browser skill. Please check the slug or try again."
-        return 1 # Indicate failure
-    fi
-    echo "✅ rent-my-browser skill installed."
+    clawhub install 0xPasho/rent-my-browser
 
+    sleep 5
     CURRENT_MODEL="$model"
     FAILURE_COUNT=0 # Reset failure count on successful onboard and skill install
     return 0 # Indicate success
