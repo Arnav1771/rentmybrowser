@@ -62,10 +62,25 @@ onboard_model() {
     sleep 3
 
     # Re-onboard with specific model via Gemini's OpenAI-compatible endpoint
-    # The --install-daemon flag should handle starting the gateway.
-    if ! openclaw onboard --non-interactive --model "$model" --api-key "$GEMINI_API_KEY"; then
+    openclaw onboard --non-interactive \
+        --mode local \
+        --auth-choice custom-api-key \
+        --custom-base-url "https://generativelanguage.googleapis.com/v1beta/openai/" \
+        --custom-model-id "$model" \
+        --custom-api-key "$GEMINI_API_KEY" \
+        --custom-provider-id "gemini" \
+        --custom-compatibility openai \
+        --secret-input-mode plaintext \
+        --gateway-port 18789 \
+        --gateway-bind loopback \
+        --install-daemon \
+        --daemon-runtime node \
+        --skip-skills \
+        --accept-risk
+
+    if [[ $? -ne 0 ]]; then
         echo "❌ Failed to onboard with model $model. Retrying with next model."
-        return 1 # Indicate failure
+        return 1
     fi
 
     echo "📥 Installing rent-my-browser skill..."
