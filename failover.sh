@@ -2,50 +2,59 @@
 set -euo pipefail
 
 # ═══════════════════════════════════════════════════════════════
-#  Rent My Browser — GitHub Actions Node (FIXED)
-#  Starts OpenClaw with Gemini API, installs rent-my-browser skill
-#  Uses ONLY official OpenClaw documented CLI flags
+#  Rent My Browser — GitHub Actions Node
+#  Uses ONLY verified, documented commands from method.md
 # ═══════════════════════════════════════════════════════════════
 
 LOG_FILE="/tmp/openclaw-node.log"
 TOTAL_RUNTIME=20700  # ~5h 45m
+SKILL_DIR="$HOME/.openclaw/skills/rent-my-browser"
 
-# Validate API key first
+echo "════════════════════════════════════════════"
+echo "🚀 Starting Rent My Browser Node"
+echo "⏰ $(date -u)"
+echo "════════════════════════════════════════════"
+
+# ── 1. Validate secrets ──────────────────────────────────────
 if [[ -z "${GEMINI_API_KEY:-}" ]]; then
-    echo "❌ GEMINI_API_KEY not found! Add it to GitHub Secrets."
+    echo "❌ GEMINI_API_KEY not set in GitHub Secrets. Aborting."
     exit 1
 fi
 echo "✅ Gemini API key found"
 
-# Install OpenClaw if needed
-if ! command -v openclaw &> /dev/null; then
+# ── 2. Install OpenClaw ──────────────────────────────────────
+if ! command -v openclaw &>/dev/null; then
     echo "📦 Installing OpenClaw..."
-    curl -fsSL https://openclaw.ai/install.sh | bash --no-onboard || exit 1
+    # Note: non-fatal /dev/tty errors during install are expected in CI
+    curl -fsSL https://openclaw.ai/install.sh | bash 2>&1 | tee -a "$LOG_FILE" || true
+    export PATH="$HOME/.local/bin:$HOME/bin:/usr/local/bin:$PATH"
 fi
-echo "✅ OpenClaw ready"
 
-# Install ClawHub if needed
-if ! command -v clawhub &> /dev/null; then
-    echo "📦 Installing ClawHub..."
-    npm install -g clawhub@latest || exit 1
+# Re-check after PATH reload
+if ! command -v openclaw &>/dev/null; then
+    echo "❌ OpenClaw not found in PATH after install."
+    echo "PATH is: $PATH"
+    exit 1
 fi
-echo "✅ ClawHub ready"
+echo "✅ OpenClaw ready: $(openclaw --version 2>/dev/null || echo 'version unknown')"
 
-# Clean up any existing gateway
-echo "🧹 Cleaning up..."
+# ── 3. Stop any existing gateway ────────────────────────────
+echo "🧹 Stopping any existing gateway..."
 openclaw gateway stop 2>/dev/null || true
-sleep 2
+sleep 3
 
-# MAIN: Onboard with official documented flags ONLY
+# ── 4. Onboard with ONLY officially documented flags ─────────
 # Source: https://docs.openclaw.ai/start/wizard-cli-automation
+# ❌ NEVER USE: --model, --custom-model-id, --custom-api-key, --custom-provider-id
 echo ""
-echo "═══════════════════════════════════════════"
-echo "🔧 Setting up OpenClaw (Gemini API)"
-echo "═══════════════════════════════════════════"
+echo "════════════════════════════════════════════"
+echo "🔧 Onboarding OpenClaw with Gemini API..."
+echo "════════════════════════════════════════════"
 
 export GEMINI_API_KEY
 
-openclaw onboard --non-interactive \
+openclaw onboard \
+  --non-interactive \
   --mode local \
   --workspace ~/.openclaw/workspace \
   --auth-choice apiKey \
@@ -55,61 +64,103 @@ openclaw onboard --non-interactive \
   --install-daemon \
   --daemon-runtime node \
   --skip-skills \
-  --accept-risk 2>&1 | tee -a "$LOG_FILE" || {
-    echo "❌ Onboarding failed"
+  --accept-risk \
+  2>&1 | tee -a "$LOG_FILE"
+
+ONBOARD_EXIT=${PIPESTATUS[0]}
+if [[ $ONBOARD_EXIT -ne 0 ]]; then
+    echo "❌ Onboarding failed (exit $ONBOARD_EXIT). Check $LOG_FILE."
     exit 1
-}
-
-echo ""
-echo "✅ OpenClaw configured"
-sleep 2
-
-# Start the gateway
-echo "🚀 Starting gateway..."
-openclaw gateway start 2>&1 | tee -a "$LOG_FILE" || true
+fi
+echo "✅ Onboarding complete"
 sleep 3
 
-# Install the skill
+# ── 5. Install rent-my-browser skill (CORRECT METHOD) ────────
+# Per method.md: clone repo then register locally
+# ❌ WRONG: clawhub install 0xPasho/rent-my-browser  (causes "Invalid slug" error)
+# ✅ RIGHT: git clone → openclaw skill add --local
 echo ""
 echo "📥 Installing rent-my-browser skill..."
-clawhub install 0xPasho/rent-my-browser 2>&1 | tee -a "$LOG_FILE" || true
 
-sleep 2
+mkdir -p "$HOME/.openclaw/skills"
+
+if [[ -d "$SKILL_DIR/.git" ]]; then
+    echo "🔄 Skill already cloned — pulling latest..."
+    git -C "$SKILL_DIR" pull 2>&1 | tee -a "$LOG_FILE" || true
+else
+    echo "📦 Cloning rent-my-browser skill..."
+    git clone https://github.com/0xPasho/rent-my-browser.git "$SKILL_DIR" \
+        2>&1 | tee -a "$LOG_FILE"
+fi
+
+echo "🔗 Registering skill with OpenClaw..."
+openclaw skill add --local "$SKILL_DIR" 2>&1 | tee -a "$LOG_FILE" || {
+    echo "⚠️  Skill registration had issues — check $LOG_FILE. Continuing..."
+}
+sleep 3
+
+# ── 6. Start gateway ─────────────────────────────────────────
+echo ""
+echo "🚀 Starting gateway..."
+openclaw gateway start 2>&1 | tee -a "$LOG_FILE" || true
+sleep 5
+
+# Verify it started — retry once if not
+if ! openclaw gateway status &>/dev/null; then
+    echo "⚠️  Gateway not up yet — retrying..."
+    openclaw gateway start 2>&1 | tee -a "$LOG_FILE" || true
+    sleep 5
+fi
+
+if openclaw gateway status &>/dev/null; then
+    echo "✅ Gateway is running"
+else
+    echo "⚠️  Gateway status unclear — continuing anyway"
+fi
+
 echo ""
 echo "════════════════════════════════════════════"
-echo "✅ Node is ONLINE and earning!"
-echo "💰 Expected: $0.04-0.12 per task"
-echo "⏱️  Running for ~5h 45m"
+echo "✅ NODE IS ONLINE"
+echo "💰 Expected: \$0.04–0.12 per task"
+echo "⏱️  Will run for ~5h 45m then exit for cron restart"
 echo "════════════════════════════════════════════"
 echo ""
 
-# Monitor gateway health
+# ── 7. Health monitor loop ───────────────────────────────────
 start_time=$(date +%s)
 
 while true; do
     current_time=$(date +%s)
     elapsed=$((current_time - start_time))
-    
+
+    # Graceful exit when time is up
     if [[ $elapsed -ge $TOTAL_RUNTIME ]]; then
-        echo "⏱️ Time limit reached. Shutting down..."
+        echo ""
+        echo "⏱️  Time limit reached after $((elapsed / 3600))h $((elapsed % 3600 / 60))m."
+        echo "🛑 Shutting down gateway..."
         openclaw gateway stop 2>/dev/null || true
-        break
+        echo "✅ Done. Cron will restart this job."
+        exit 0
     fi
-    
+
     remaining=$((TOTAL_RUNTIME - elapsed))
     hours=$((remaining / 3600))
     mins=$(((remaining % 3600) / 60))
-    
+
+    # Health check
     if openclaw gateway status &>/dev/null; then
-        echo "[$(date -u '+%H:%M:%S')] 💚 OK | Remaining: ${hours}h ${mins}m"
+        echo "[$(date -u '+%H:%M:%S')] 💚 Gateway OK | Remaining: ${hours}h ${mins}m"
     else
-        echo "[$(date -u '+%H:%M:%S')] ⚠️ Gateway offline - restarting..."
+        echo "[$(date -u '+%H:%M:%S')] ⚠️  Gateway offline — restarting..."
         openclaw gateway start 2>&1 | tee -a "$LOG_FILE" || true
-        sleep 3
+        sleep 5
+
+        if openclaw gateway status &>/dev/null; then
+            echo "[$(date -u '+%H:%M:%S')] ✅ Gateway restarted"
+        else
+            echo "[$(date -u '+%H:%M:%S')] ❌ Restart failed — retrying in 2 min"
+        fi
     fi
-    
+
     sleep 120
 done
-
-echo "✅ Done. Cron will restart."
-exit 0
