@@ -59,13 +59,12 @@ export ANTHROPIC_API_KEY="${GEMINI_API_KEY}"
 
 echo "🔑 Using Gemini API key for authentication..."
 
-# Pass API key via stdin to ensure it's received
-echo "${ANTHROPIC_API_KEY}" | openclaw onboard \
+openclaw onboard \
   --non-interactive \
   --mode local \
   --workspace ~/.openclaw/workspace \
   --auth-choice apiKey \
-  --secret-input-mode stdin \
+  --secret-input-mode plaintext \
   --gateway-port 18789 \
   --gateway-bind loopback \
   --install-daemon \
