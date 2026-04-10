@@ -79,7 +79,11 @@ if [[ $ONBOARD_EXIT -ne 0 ]]; then
     exit 1
 fi
 echo "✅ Onboarding complete"
-sleep 3
+sleep 5
+
+# Give systemd service time to initialize after onboarding
+echo "⏳ Waiting for system to stabilize after onboarding..."
+sleep 10
 
 # ── 5. Install rent-my-browser skill (CORRECT METHOD) ────────
 # Per method.md: clone repo then register locally
@@ -105,23 +109,31 @@ openclaw skill add --local "$SKILL_DIR" 2>&1 | tee -a "$LOG_FILE" || {
 }
 sleep 3
 
-# ── 6. Start gateway ─────────────────────────────────────────
+# ── 6. Start and verify gateway with retries ─────────────────
 echo ""
 echo "🚀 Starting gateway..."
-openclaw gateway start 2>&1 | tee -a "$LOG_FILE" || true
-sleep 5
 
-# Verify it started — retry once if not
-if ! openclaw gateway status &>/dev/null; then
-    echo "⚠️  Gateway not up yet — retrying..."
-    openclaw gateway start 2>&1 | tee -a "$LOG_FILE" || true
+retry_count=0
+max_retries=5
+gateway_ready=false
+
+while [[ $retry_count -lt $max_retries ]]; do
+    echo "[Attempt $((retry_count + 1))/$max_retries] Checking gateway..."
+    
+    if openclaw gateway status &>/dev/null; then
+        echo "✅ Gateway is running"
+        gateway_ready=true
+        break
+    fi
+    
+    echo "Gateway not ready, waiting 5 seconds before retry..."
     sleep 5
-fi
+    retry_count=$((retry_count + 1))
+done
 
-if openclaw gateway status &>/dev/null; then
-    echo "✅ Gateway is running"
-else
-    echo "⚠️  Gateway status unclear — continuing anyway"
+if [[ $gateway_ready == false ]]; then
+    echo "⚠️  Gateway not responding after retries, logging status for debugging..."
+    openclaw gateway status 2>&1 | tee -a "$LOG_FILE" || true
 fi
 
 echo ""
