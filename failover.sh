@@ -52,13 +52,20 @@ echo "🔧 Onboarding OpenClaw with Gemini API..."
 echo "════════════════════════════════════════════"
 
 export GEMINI_API_KEY
+# OpenClaw onboarding currently defaults to Anthropic authentication
+# We pass GEMINI_API_KEY as ANTHROPIC_API_KEY to satisfy onboarding
+# The rent-my-browser skill will use GEMINI_API_KEY from environment for actual requests
+export ANTHROPIC_API_KEY="${GEMINI_API_KEY}"
 
-openclaw onboard \
+echo "🔑 Using Gemini API key for authentication..."
+
+# Pass API key via stdin to ensure it's received
+echo "${ANTHROPIC_API_KEY}" | openclaw onboard \
   --non-interactive \
   --mode local \
   --workspace ~/.openclaw/workspace \
   --auth-choice apiKey \
-  --secret-input-mode plaintext \
+  --secret-input-mode stdin \
   --gateway-port 18789 \
   --gateway-bind loopback \
   --install-daemon \
