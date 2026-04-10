@@ -7,8 +7,25 @@ set -euo pipefail
 # ═══════════════════════════════════════════════════════════════
 
 LOG_FILE="/tmp/openclaw-node.log"
+GATEWAY_LOG="/tmp/openclaw-gateway.log"
 TOTAL_RUNTIME=20700  # ~5h 45m
 SKILL_DIR="$HOME/.openclaw/skills/rent-my-browser"
+
+# ── Diagnostic helper ────────────────────────────────────────
+dump_gateway_diagnostics() {
+    echo ""
+    echo "════════ GATEWAY DIAGNOSTICS ════════"
+    echo "--- Gateway log (${GATEWAY_LOG}) ---"
+    cat "$GATEWAY_LOG" 2>/dev/null || echo "(no gateway log found)"
+    echo ""
+    echo "--- openclaw gateway status ---"
+    openclaw gateway status 2>&1 || true
+    echo ""
+    echo "--- Running openclaw/node processes ---"
+    ps aux | grep -i -E 'openclaw|gateway' | grep -v grep | head -n 30 || true
+    echo "════════════════════════════════════"
+    echo ""
+}
 
 echo "════════════════════════════════════════════"
 echo "🚀 Starting Rent My Browser Node"
@@ -59,6 +76,9 @@ export ANTHROPIC_API_KEY="${GEMINI_API_KEY}"
 
 echo "🔑 Using Gemini API key for authentication..."
 
+# NOTE: --install-daemon is intentionally omitted.
+# GitHub Actions runners do not support user-level systemd services reliably;
+# the gateway is started explicitly below instead.
 openclaw onboard \
   --non-interactive \
   --mode local \
@@ -67,8 +87,6 @@ openclaw onboard \
   --secret-input-mode plaintext \
   --gateway-port 18789 \
   --gateway-bind loopback \
-  --install-daemon \
-  --daemon-runtime node \
   --skip-skills \
   --accept-risk \
   2>&1 | tee -a "$LOG_FILE"
@@ -79,11 +97,7 @@ if [[ $ONBOARD_EXIT -ne 0 ]]; then
     exit 1
 fi
 echo "✅ Onboarding complete"
-sleep 5
-
-# Give systemd service time to initialize after onboarding
-echo "⏳ Waiting for system to stabilize after onboarding..."
-sleep 10
+sleep 2
 
 # ── 5. Install rent-my-browser skill (CORRECT METHOD) ────────
 # Per method.md: clone repo then register locally
@@ -109,31 +123,34 @@ openclaw skill add --local "$SKILL_DIR" 2>&1 | tee -a "$LOG_FILE" || {
 }
 sleep 3
 
-# ── 6. Start and verify gateway with retries ─────────────────
+# ── 6. Start gateway explicitly and wait for it ──────────────
 echo ""
-echo "🚀 Starting gateway..."
+echo "🚀 Starting gateway explicitly (no systemd)..."
 
-retry_count=0
-max_retries=5
+# Kill any stale gateway process first
+openclaw gateway stop 2>/dev/null || true
+sleep 1
+
+# Start gateway in background, capturing output to GATEWAY_LOG
+nohup openclaw gateway start > "$GATEWAY_LOG" 2>&1 &
+echo "   Gateway started in background"
+
+# Wait for port 18789 to accept connections (up to 60 seconds)
+echo "⏳ Waiting for gateway on 127.0.0.1:18789 (up to 60s)..."
 gateway_ready=false
-
-while [[ $retry_count -lt $max_retries ]]; do
-    echo "[Attempt $((retry_count + 1))/$max_retries] Checking gateway..."
-    
-    if openclaw gateway status &>/dev/null; then
-        echo "✅ Gateway is running"
+for i in $(seq 1 60); do
+    if (echo >/dev/tcp/127.0.0.1/18789) >/dev/null 2>&1; then
+        echo "✅ Gateway is up (${i}s)"
         gateway_ready=true
         break
     fi
-    
-    echo "Gateway not ready, waiting 5 seconds before retry..."
-    sleep 5
-    retry_count=$((retry_count + 1))
+    sleep 1
 done
 
-if [[ $gateway_ready == false ]]; then
-    echo "⚠️  Gateway not responding after retries, logging status for debugging..."
-    openclaw gateway status 2>&1 | tee -a "$LOG_FILE" || true
+if [[ "$gateway_ready" == false ]]; then
+    echo "❌ Gateway did not become reachable within 60 seconds."
+    dump_gateway_diagnostics
+    exit 1
 fi
 
 echo ""
@@ -166,17 +183,18 @@ while true; do
     mins=$(((remaining % 3600) / 60))
 
     # Health check
-    if openclaw gateway status &>/dev/null; then
+    if (echo >/dev/tcp/127.0.0.1/18789) >/dev/null 2>&1; then
         echo "[$(date -u '+%H:%M:%S')] 💚 Gateway OK | Remaining: ${hours}h ${mins}m"
     else
         echo "[$(date -u '+%H:%M:%S')] ⚠️  Gateway offline — restarting..."
-        openclaw gateway start 2>&1 | tee -a "$LOG_FILE" || true
+        openclaw gateway start >> "$GATEWAY_LOG" 2>&1 &
         sleep 5
 
-        if openclaw gateway status &>/dev/null; then
+        if (echo >/dev/tcp/127.0.0.1/18789) >/dev/null 2>&1; then
             echo "[$(date -u '+%H:%M:%S')] ✅ Gateway restarted"
         else
             echo "[$(date -u '+%H:%M:%S')] ❌ Restart failed — retrying in 2 min"
+            dump_gateway_diagnostics
         fi
     fi
 

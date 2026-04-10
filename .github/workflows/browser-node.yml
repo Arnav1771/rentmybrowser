@@ -54,3 +54,18 @@ jobs:
         env:
           FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
         run: ./failover.sh
+
+      - name: 🩺 Dump diagnostics on failure
+        if: failure()
+        run: |
+          echo "=== Gateway log ==="
+          cat /tmp/openclaw-gateway.log 2>/dev/null || echo "(no gateway log)"
+          echo ""
+          echo "=== OpenClaw node log ==="
+          cat /tmp/openclaw-node.log 2>/dev/null || echo "(no node log)"
+          echo ""
+          echo "=== Running processes ==="
+          ps aux | grep -i -E 'openclaw|gateway|node' | grep -v grep | head -n 30 || true
+          echo ""
+          echo "=== Port 18789 listeners ==="
+          ss -tlnp 'sport = :18789' 2>/dev/null || netstat -tlnp 2>/dev/null | grep 18789 || echo "(nothing listening)"
