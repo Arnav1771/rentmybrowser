@@ -161,6 +161,15 @@ echo "📂 Copying skill files to OpenClaw skills directory..."
 mkdir -p "$SKILL_DIR"
 cp -r "$REPO_DIR/skill/." "$SKILL_DIR/"
 
+echo "📦 Installing skill dependencies..."
+cd "$SKILL_DIR"
+npm install 2>&1 | tee -a "$LOG_FILE"
+if [[ $? -ne 0 ]]; then
+    echo "❌ npm install failed in skill directory."
+    exit 1
+fi
+cd - > /dev/null
+
 echo "✅ Skill is in ~/.openclaw/skills/ — auto-loaded by OpenClaw"
 sleep 3
 

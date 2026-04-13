@@ -210,7 +210,44 @@
 
 ---
 
-### 🟡 Workflow Logs Not Showing Output
+### � Error: `ERR_MODULE_NOT_FOUND: Cannot find package 'viem'`
+
+**Error Message:**
+```
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'viem' imported from 
+/home/runner/.openclaw/skills/rent-my-browser/scripts/generate-wallet.mjs
+Error: Process completed with exit code 1
+```
+
+**Cause:** The rent-my-browser skill dependencies were not installed. When the skill is copied, its `package.json` requires packages like `viem` and `ethers`, but `npm install` was never run.
+
+**Solution:**
+This is now fixed in the latest `failover.sh`. The script automatically runs `npm install` in the skill directory after copying files.
+
+**If you're still seeing this error:**
+1. Pull the latest failover.sh:
+   ```bash
+   git pull
+   ```
+
+2. Trigger the workflow again:
+   ```bash
+   gh workflow run browser-node.yml
+   ```
+
+3. If error persists, manually update failover.sh:
+   - Find the section after `cp -r "$REPO_DIR/skill/." "$SKILL_DIR/"`
+   - Add these lines:
+   ```bash
+   echo "📦 Installing skill dependencies..."
+   cd "$SKILL_DIR"
+   npm install 2>&1 | tee -a "$LOG_FILE"
+   cd - > /dev/null
+   ```
+
+---
+
+### �🟡 Workflow Logs Not Showing Output
 
 **Issue:** GitHub Actions logs appear empty or truncated
 
