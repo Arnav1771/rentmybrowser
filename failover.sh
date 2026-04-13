@@ -67,8 +67,6 @@ openclaw onboard \
   --secret-input-mode plaintext \
   --gateway-port 18789 \
   --gateway-bind loopback \
-  --install-daemon \
-  --daemon-runtime node \
   --skip-skills \
   --accept-risk \
   2>&1 | tee -a "$LOG_FILE"
@@ -79,11 +77,40 @@ if [[ $ONBOARD_EXIT -ne 0 ]]; then
     exit 1
 fi
 echo "✅ Onboarding complete"
-sleep 5
 
-# Give systemd service time to initialize after onboarding
-echo "⏳ Waiting for system to stabilize after onboarding..."
-sleep 10
+# ── Start gateway explicitly (CI-safe — no systemd) ──────────
+echo ""
+echo "🚀 Starting gateway (manual CI-safe)..."
+# || true: gateway start may return non-zero if already running; port check below is authoritative
+openclaw gateway start 2>&1 | tee -a "$LOG_FILE" || true
+
+# Ensure netcat is available for port check
+if ! command -v nc >/dev/null 2>&1; then
+    echo "📦 Installing netcat-openbsd..."
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq netcat-openbsd
+fi
+
+# Wait up to 60 seconds for TCP port 18789 to be listening
+echo "⏳ Waiting for gateway port 18789..."
+gateway_ready=false
+for i in {1..60}; do
+    if nc -z 127.0.0.1 18789 2>/dev/null; then
+        echo "✅ Gateway is listening on 127.0.0.1:18789 (after ${i}s)"
+        gateway_ready=true
+        break
+    fi
+    sleep 1
+done
+
+if [[ $gateway_ready == false ]]; then
+    echo "❌ Gateway failed to listen on 127.0.0.1:18789 after 60s"
+    echo "---- gateway status ----"
+    openclaw gateway status 2>&1 | tee -a "$LOG_FILE" || true
+    echo "---- recent log ----"
+    tail -n 200 "$LOG_FILE" || true
+    exit 1
+fi
 
 # ── 5. Install rent-my-browser skill (CORRECT METHOD) ────────
 # Per method.md: clone repo then register locally
@@ -109,32 +136,9 @@ openclaw skill add --local "$SKILL_DIR" 2>&1 | tee -a "$LOG_FILE" || {
 }
 sleep 3
 
-# ── 6. Start and verify gateway with retries ─────────────────
+# ── 6. Gateway already started and verified above ────────────
 echo ""
-echo "🚀 Starting gateway..."
-
-retry_count=0
-max_retries=5
-gateway_ready=false
-
-while [[ $retry_count -lt $max_retries ]]; do
-    echo "[Attempt $((retry_count + 1))/$max_retries] Checking gateway..."
-    
-    if openclaw gateway status &>/dev/null; then
-        echo "✅ Gateway is running"
-        gateway_ready=true
-        break
-    fi
-    
-    echo "Gateway not ready, waiting 5 seconds before retry..."
-    sleep 5
-    retry_count=$((retry_count + 1))
-done
-
-if [[ $gateway_ready == false ]]; then
-    echo "⚠️  Gateway not responding after retries, logging status for debugging..."
-    openclaw gateway status 2>&1 | tee -a "$LOG_FILE" || true
-fi
+echo "✅ Gateway is ready (verified via port check)"
 
 echo ""
 echo "════════════════════════════════════════════"
