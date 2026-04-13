@@ -8,6 +8,7 @@ set -euo pipefail
 
 LOG_FILE="/tmp/openclaw-node.log"
 TOTAL_RUNTIME=20700  # ~5h 45m
+REPO_DIR="$HOME/.openclaw/repos/rent-my-browser"
 SKILL_DIR="$HOME/.openclaw/skills/rent-my-browser"
 GATEWAY_PID_FILE="/tmp/openclaw-gateway.pid"
 
@@ -147,14 +148,18 @@ echo "📥 Installing rent-my-browser skill..."
 
 mkdir -p "$HOME/.openclaw/skills"
 
-if [[ -d "$SKILL_DIR/.git" ]]; then
-    echo "🔄 Skill already cloned — pulling latest..."
-    git -C "$SKILL_DIR" pull 2>&1 | tee -a "$LOG_FILE" || true
+if [[ -d "$REPO_DIR/.git" ]]; then
+    echo "🔄 Repo already cloned — pulling latest..."
+    git -C "$REPO_DIR" pull 2>&1 | tee -a "$LOG_FILE" || true
 else
-    echo "📦 Cloning rent-my-browser skill..."
-    git clone https://github.com/0xPasho/rent-my-browser.git "$SKILL_DIR" \
+    echo "📦 Cloning rent-my-browser repo..."
+    git clone https://github.com/0xPasho/rent-my-browser.git "$REPO_DIR" \
         2>&1 | tee -a "$LOG_FILE"
 fi
+
+echo "📂 Copying skill files to OpenClaw skills directory..."
+mkdir -p "$SKILL_DIR"
+cp -r "$REPO_DIR/skill/." "$SKILL_DIR/"
 
 echo "✅ Skill is in ~/.openclaw/skills/ — auto-loaded by OpenClaw"
 sleep 3
