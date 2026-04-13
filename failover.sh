@@ -68,6 +68,7 @@ openclaw onboard \
   --gateway-port 18789 \
   --gateway-bind loopback \
   --skip-skills \
+  --skip-health \
   --accept-risk \
   2>&1 | tee -a "$LOG_FILE"
 
