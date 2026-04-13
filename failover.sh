@@ -34,12 +34,17 @@ echo "🚀 Starting Rent My Browser Node"
 echo "⏰ $(date -u)"
 echo "════════════════════════════════════════════"
 
-# ── 1. Validate secrets ──────────────────────────────────────
 if [[ -z "${GEMINI_API_KEY:-}" ]]; then
     echo "❌ GEMINI_API_KEY not set in GitHub Secrets. Aborting."
     exit 1
 fi
 echo "✅ Gemini API key found"
+
+if [[ -z "${RMB_API_KEY:-}" ]]; then
+    echo "❌ RMB_API_KEY not set in GitHub Secrets. Aborting."
+    exit 1
+fi
+echo "✅ RMB API key found"
 
 # ── 2. Install OpenClaw ──────────────────────────────────────
 if ! command -v openclaw &>/dev/null; then
@@ -152,10 +157,19 @@ else
 fi
 
 echo "🔗 Registering skill with OpenClaw..."
-openclaw skill add --local "$SKILL_DIR" 2>&1 | tee -a "$LOG_FILE" || {
+openclaw skills add --local "$SKILL_DIR" 2>&1 | tee -a "$LOG_FILE" || {
     echo "⚠️  Skill registration had issues — check $LOG_FILE. Continuing..."
 }
 sleep 3
+
+echo "🌐 Connecting node to Rent My Browser marketplace..."
+export RMB_API_KEY
+bash "$SKILL_DIR/scripts/connect.sh" 2>&1 | tee -a "$LOG_FILE"
+if [[ $? -ne 0 ]]; then
+    echo "❌ Failed to connect to marketplace. Check $LOG_FILE."
+    exit 1
+fi
+echo "✅ Node connected to marketplace — cron job registered"
 
 # ── 6. Gateway already started and verified above ────────────
 echo ""
@@ -169,18 +183,17 @@ echo "⏱️  Will run for ~5h 45m then exit for cron restart"
 echo "════════════════════════════════════════════"
 echo ""
 
-# ── 7. Health monitor loop ───────────────────────────────────
+# ── 7. Keep-alive loop (cron handles task polling) ──────────
 start_time=$(date +%s)
+echo "💤 Node is live. Cron polls every 10s for tasks automatically."
 
 while true; do
     current_time=$(date +%s)
     elapsed=$((current_time - start_time))
 
-    # Graceful exit when time is up
     if [[ $elapsed -ge $TOTAL_RUNTIME ]]; then
-        echo ""
-        echo "⏱️  Time limit reached after $((elapsed / 3600))h $((elapsed % 3600 / 60))m."
-        echo "🛑 Shutting down gateway..."
+        echo "⏱️  Time limit reached. Disconnecting..."
+        bash "$SKILL_DIR/scripts/disconnect.sh" 2>/dev/null || true
         stop_gateway_process
         openclaw gateway stop 2>/dev/null || true
         echo "✅ Done. Cron will restart this job."
@@ -188,25 +201,6 @@ while true; do
     fi
 
     remaining=$((TOTAL_RUNTIME - elapsed))
-    hours=$((remaining / 3600))
-    mins=$(((remaining % 3600) / 60))
-
-    # Health check
-    if openclaw gateway status &>/dev/null; then
-        echo "[$(date -u '+%H:%M:%S')] 💚 Gateway OK | Remaining: ${hours}h ${mins}m"
-    else
-        echo "[$(date -u '+%H:%M:%S')] ⚠️  Gateway offline — restarting..."
-        stop_gateway_process
-        sleep 2
-        start_gateway_background
-        sleep 5
-
-        if openclaw gateway status &>/dev/null; then
-            echo "[$(date -u '+%H:%M:%S')] ✅ Gateway restarted (PID: $GATEWAY_PID)"
-        else
-            echo "[$(date -u '+%H:%M:%S')] ❌ Restart failed — retrying in 2 min"
-        fi
-    fi
-
-    sleep 120
+    echo "[$(date -u '+%H:%M:%S')] 💚 Running | Remaining: $((remaining/3600))h $(((remaining%3600)/60))m"
+    sleep 300
 done
