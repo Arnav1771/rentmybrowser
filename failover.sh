@@ -156,11 +156,17 @@ else
         2>&1 | tee -a "$LOG_FILE"
 fi
 
-echo "🔗 Registering skill with OpenClaw..."
-openclaw skills add "$SKILL_DIR" 2>&1 | tee -a "$LOG_FILE" || {
-    echo "⚠️  Skill registration had issues — check $LOG_FILE. Continuing..."
-}
+echo "✅ Skill is in ~/.openclaw/skills/ — auto-loaded by OpenClaw"
 sleep 3
+
+echo "🌐 Connecting node to Rent My Browser marketplace..."
+export RMB_API_KEY
+bash "$SKILL_DIR/scripts/connect.sh" 2>&1 | tee -a "$LOG_FILE"
+if [[ $? -ne 0 ]]; then
+    echo "❌ Failed to connect to marketplace. Check $LOG_FILE."
+    exit 1
+fi
+echo "✅ Node connected — polling for tasks every 10s"
 
 echo "🌐 Connecting node to Rent My Browser marketplace..."
 export RMB_API_KEY
