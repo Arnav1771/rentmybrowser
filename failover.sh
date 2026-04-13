@@ -157,7 +157,7 @@ else
 fi
 
 echo "🔗 Registering skill with OpenClaw..."
-openclaw skills add --local "$SKILL_DIR" 2>&1 | tee -a "$LOG_FILE" || {
+openclaw skills add "$SKILL_DIR" 2>&1 | tee -a "$LOG_FILE" || {
     echo "⚠️  Skill registration had issues — check $LOG_FILE. Continuing..."
 }
 sleep 3
