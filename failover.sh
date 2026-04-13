@@ -9,6 +9,25 @@ set -euo pipefail
 LOG_FILE="/tmp/openclaw-node.log"
 TOTAL_RUNTIME=20700  # ~5h 45m
 SKILL_DIR="$HOME/.openclaw/skills/rent-my-browser"
+GATEWAY_PID_FILE="/tmp/openclaw-gateway.pid"
+
+# ── Helper: kill existing background gateway process ────────
+stop_gateway_process() {
+    if [[ -f "$GATEWAY_PID_FILE" ]]; then
+        OLD_PID=$(cat "$GATEWAY_PID_FILE")
+        kill "$OLD_PID" 2>/dev/null || true
+        rm -f "$GATEWAY_PID_FILE"
+    fi
+    pkill -f "openclaw gateway" 2>/dev/null || true
+}
+
+# ── Helper: start gateway in background and record PID ──────
+start_gateway_background() {
+    nohup openclaw gateway >> "$LOG_FILE" 2>&1 &
+    GATEWAY_PID=$!
+    echo "$GATEWAY_PID" > "$GATEWAY_PID_FILE"
+    echo "🚀 Gateway started in background (PID: $GATEWAY_PID)"
+}
 
 echo "════════════════════════════════════════════"
 echo "🚀 Starting Rent My Browser Node"
@@ -41,6 +60,7 @@ echo "✅ OpenClaw ready: $(openclaw --version 2>/dev/null || echo 'version unkn
 # ── 3. Stop any existing gateway ────────────────────────────
 echo "🧹 Stopping any existing gateway..."
 openclaw gateway stop 2>/dev/null || true
+stop_gateway_process
 sleep 3
 
 # ── 4. Onboard with ONLY officially documented flags ─────────
@@ -82,8 +102,8 @@ echo "✅ Onboarding complete"
 # ── Start gateway explicitly (CI-safe — no systemd) ──────────
 echo ""
 echo "🚀 Starting gateway (manual CI-safe)..."
-# || true: gateway start may return non-zero if already running; port check below is authoritative
-openclaw gateway start 2>&1 | tee -a "$LOG_FILE" || true
+# Run gateway directly in background (systemd is not available in GitHub Actions)
+start_gateway_background
 
 # Ensure netcat is available for port check
 if ! command -v nc >/dev/null 2>&1; then
@@ -161,6 +181,7 @@ while true; do
         echo ""
         echo "⏱️  Time limit reached after $((elapsed / 3600))h $((elapsed % 3600 / 60))m."
         echo "🛑 Shutting down gateway..."
+        stop_gateway_process
         openclaw gateway stop 2>/dev/null || true
         echo "✅ Done. Cron will restart this job."
         exit 0
@@ -175,11 +196,13 @@ while true; do
         echo "[$(date -u '+%H:%M:%S')] 💚 Gateway OK | Remaining: ${hours}h ${mins}m"
     else
         echo "[$(date -u '+%H:%M:%S')] ⚠️  Gateway offline — restarting..."
-        openclaw gateway start 2>&1 | tee -a "$LOG_FILE" || true
+        stop_gateway_process
+        sleep 2
+        start_gateway_background
         sleep 5
 
         if openclaw gateway status &>/dev/null; then
-            echo "[$(date -u '+%H:%M:%S')] ✅ Gateway restarted"
+            echo "[$(date -u '+%H:%M:%S')] ✅ Gateway restarted (PID: $GATEWAY_PID)"
         else
             echo "[$(date -u '+%H:%M:%S')] ❌ Restart failed — retrying in 2 min"
         fi
