@@ -182,15 +182,6 @@ if [[ $? -ne 0 ]]; then
 fi
 echo "✅ Node connected — polling for tasks every 10s"
 
-echo "🌐 Connecting node to Rent My Browser marketplace..."
-export RMB_API_KEY
-bash "$SKILL_DIR/scripts/connect.sh" 2>&1 | tee -a "$LOG_FILE"
-if [[ $? -ne 0 ]]; then
-    echo "❌ Failed to connect to marketplace. Check $LOG_FILE."
-    exit 1
-fi
-echo "✅ Node connected to marketplace — cron job registered"
-
 # ── 6. Gateway already started and verified above ────────────
 echo ""
 echo "✅ Gateway is ready (verified via port check)"
