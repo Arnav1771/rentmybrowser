@@ -30,6 +30,15 @@ jobs:
         with:
           node-version: '22'
 
+      # ─── Restore node credentials cache (maintain same node ID across restarts) ───
+      - name: 💾 Restore Node Credentials Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.rent-my-browser-creds
+          key: rentmybrowser-node-creds
+          restore-keys: |
+            rentmybrowser-node-creds
+
       # ─── Install OpenClaw via npm directly (skips interactive setup wizard) ───
       - name: 🦞 Install OpenClaw
         run: |

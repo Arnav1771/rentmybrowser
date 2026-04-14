@@ -11,6 +11,8 @@ TOTAL_RUNTIME=20700  # ~5h 45m
 REPO_DIR="$HOME/.openclaw/repos/rent-my-browser"
 SKILL_DIR="$HOME/.openclaw/skills/rent-my-browser"
 GATEWAY_PID_FILE="/tmp/openclaw-gateway.pid"
+CREDS_CACHE_DIR="$HOME/.rent-my-browser-creds"
+CREDS_FILE="$CREDS_CACHE_DIR/credentials.json"
 
 # ── Helper: kill existing background gateway process ────────
 stop_gateway_process() {
@@ -175,6 +177,18 @@ cd - > /dev/null
 echo "✅ Skill is in ~/.openclaw/skills/ — auto-loaded by OpenClaw"
 sleep 3
 
+# ── Restore cached credentials (to reuse same node ID across restarts) ────
+echo "🔄 Checking for cached node credentials..."
+if [[ -f "$CREDS_FILE" ]]; then
+    echo "✅ Found cached credentials — restoring to maintain node identity..."
+    mkdir -p "$SKILL_DIR/state"
+    cp "$CREDS_FILE" "$SKILL_DIR/state/credentials.json"
+    NODE_ID=$(jq -r '.nodeId // .node_id // empty' "$SKILL_DIR/state/credentials.json" 2>/dev/null || echo "unknown")
+    echo "🔑 Reusing Node ID: $NODE_ID"
+else
+    echo "📝 No cached credentials found — will generate new node identity on first run"
+fi
+
 echo "🌐 Connecting node to Rent My Browser marketplace..."
 echo "🔍 DEBUG: About to call connect.sh"
 echo "🔍 DEBUG: SKILL_DIR = $SKILL_DIR"
@@ -182,6 +196,15 @@ echo "🔍 DEBUG: RMB_API_KEY set = $([ -z "${RMB_API_KEY:-}" ] && echo 'NO' || 
 export RMB_API_KEY
 bash "$SKILL_DIR/scripts/connect.sh" 2>&1 | tee -a "$LOG_FILE"
 CONNECT_EXIT=$?
+
+# ── Cache credentials for next run ────────────────────────────────────────
+if [[ $CONNECT_EXIT -eq 0 ]] && [[ -f "$SKILL_DIR/state/credentials.json" ]]; then
+    echo "💾 Saving credentials to cache for next run..."
+    mkdir -p "$CREDS_CACHE_DIR"
+    cp "$SKILL_DIR/state/credentials.json" "$CREDS_FILE"
+    echo "✅ Credentials cached"
+fi
+
 if [[ $CONNECT_EXIT -ne 0 ]]; then
     echo "❌ Failed to connect to marketplace (exit code: $CONNECT_EXIT). Check $LOG_FILE."
     echo "🔍 DEBUG: Last 50 lines of log:"
