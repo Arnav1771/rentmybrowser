@@ -185,6 +185,15 @@ if [[ -f "$CREDS_FILE" ]]; then
     cp "$CREDS_FILE" "$SKILL_DIR/state/credentials.json"
     NODE_ID=$(jq -r '.nodeId // .node_id // empty' "$SKILL_DIR/state/credentials.json" 2>/dev/null || echo "unknown")
     echo "🔑 Reusing Node ID: $NODE_ID"
+    
+    # Also restore API key from cached credentials if not already set
+    if [[ -z "${RMB_API_KEY:-}" ]]; then
+        CACHED_API_KEY=$(jq -r '.apiKey // .api_key // empty' "$SKILL_DIR/state/credentials.json" 2>/dev/null || echo "")
+        if [[ -n "$CACHED_API_KEY" ]]; then
+            export RMB_API_KEY="$CACHED_API_KEY"
+            echo "🔑 Restored API key from cache"
+        fi
+    fi
 else
     echo "📝 No cached credentials found — will generate new node identity on first run"
 fi
@@ -208,6 +217,13 @@ if [[ $CONNECT_EXIT -eq 0 ]] && [[ -f "$SKILL_DIR/state/credentials.json" ]]; th
     echo "💾 Saving credentials to cache for next run..."
     mkdir -p "$CREDS_CACHE_DIR"
     cp "$SKILL_DIR/state/credentials.json" "$CREDS_FILE"
+    
+    # Extract and re-export API key from credentials (connect.sh may have lost it)
+    SAVED_API_KEY=$(jq -r '.apiKey // .api_key // empty' "$SKILL_DIR/state/credentials.json" 2>/dev/null || echo "")
+    if [[ -n "$SAVED_API_KEY" ]]; then
+        export RMB_API_KEY="$SAVED_API_KEY"
+        echo "🔑 Re-exported API key from credentials"
+    fi
     echo "✅ Credentials cached"
 fi
 
