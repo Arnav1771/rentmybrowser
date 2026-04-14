@@ -193,7 +193,13 @@ echo "🌐 Connecting node to Rent My Browser marketplace..."
 echo "🔍 DEBUG: About to call connect.sh"
 echo "🔍 DEBUG: SKILL_DIR = $SKILL_DIR"
 echo "🔍 DEBUG: RMB_API_KEY set = $([ -z "${RMB_API_KEY:-}" ] && echo 'NO' || echo 'YES')"
+if [[ -n "${RMB_WALLET_ADDRESS:-}" ]]; then
+    echo "🔍 DEBUG: RMB_WALLET_ADDRESS set = YES (${RMB_WALLET_ADDRESS:0:10}...)"
+else
+    echo "🔍 DEBUG: RMB_WALLET_ADDRESS set = NO (will auto-generate)"
+fi
 export RMB_API_KEY
+export RMB_WALLET_ADDRESS
 bash "$SKILL_DIR/scripts/connect.sh" 2>&1 | tee -a "$LOG_FILE"
 CONNECT_EXIT=$?
 
