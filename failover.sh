@@ -215,7 +215,7 @@ CONNECT_EXIT=$?
 # ── Handle "node already exists" error ──────────────────────────────────────
 if [[ $CONNECT_EXIT -ne 0 ]]; then
     if grep -q "node already exists for this wallet" "$LOG_FILE" 2>/dev/null; then
-        echo "⚠️  Node already exists for this wallet. Attempting to reconnect with existing credentials..."
+        echo "⚠️  Node already exists for this wallet."
         # Check if we have cached credentials
         if [[ -f "$CREDS_FILE" ]]; then
             echo "♻️  Using cached credentials to reconnect..."
@@ -229,6 +229,13 @@ if [[ $CONNECT_EXIT -ne 0 ]]; then
                 echo "✅ Reconnected with existing credentials"
                 CONNECT_EXIT=0
             fi
+        else
+            echo "📝 No cached credentials for this wallet. Falling back to auto-generated wallet..."
+            echo "⚠️  Unsetting RMB_WALLET_ADDRESS to allow auto-generation"
+            unset RMB_WALLET_ADDRESS
+            # Retry connect.sh without the custom wallet
+            bash "$SKILL_DIR/scripts/connect.sh" 2>&1 | tee -a "$LOG_FILE"
+            CONNECT_EXIT=$?
         fi
     fi
 fi
