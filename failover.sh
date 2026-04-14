@@ -212,6 +212,27 @@ export RMB_WALLET_ADDRESS
 bash "$SKILL_DIR/scripts/connect.sh" 2>&1 | tee -a "$LOG_FILE"
 CONNECT_EXIT=$?
 
+# ── Handle "node already exists" error ──────────────────────────────────────
+if [[ $CONNECT_EXIT -ne 0 ]]; then
+    if grep -q "node already exists for this wallet" "$LOG_FILE" 2>/dev/null; then
+        echo "⚠️  Node already exists for this wallet. Attempting to reconnect with existing credentials..."
+        # Check if we have cached credentials
+        if [[ -f "$CREDS_FILE" ]]; then
+            echo "♻️  Using cached credentials to reconnect..."
+            mkdir -p "$SKILL_DIR/state"
+            cp "$CREDS_FILE" "$SKILL_DIR/state/credentials.json"
+            CACHED_NODE_ID=$(jq -r '.nodeId // .node_id // empty' "$SKILL_DIR/state/credentials.json" 2>/dev/null || echo "")
+            CACHED_API_KEY=$(jq -r '.apiKey // .api_key // empty' "$SKILL_DIR/state/credentials.json" 2>/dev/null || echo "")
+            if [[ -n "$CACHED_NODE_ID" ]] && [[ -n "$CACHED_API_KEY" ]]; then
+                echo "🔑 Loaded cached Node ID: $CACHED_NODE_ID"
+                export RMB_API_KEY="$CACHED_API_KEY"
+                echo "✅ Reconnected with existing credentials"
+                CONNECT_EXIT=0
+            fi
+        fi
+    fi
+fi
+
 # ── Cache credentials for next run ────────────────────────────────────────
 if [[ $CONNECT_EXIT -eq 0 ]] && [[ -f "$SKILL_DIR/state/credentials.json" ]]; then
     echo "💾 Saving credentials to cache for next run..."
