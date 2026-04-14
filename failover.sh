@@ -212,28 +212,28 @@ export RMB_WALLET_ADDRESS
 bash "$SKILL_DIR/scripts/connect.sh" 2>&1 | tee -a "$LOG_FILE"
 CONNECT_EXIT=$?
 
-# ── Handle "node already exists" error ──────────────────────────────────────
+# ── Check if connection succeeded ─────────────────────────────────────────────
 if [[ $CONNECT_EXIT -ne 0 ]]; then
-    if grep -q "node already exists for this wallet" "$LOG_FILE" 2>/dev/null; then
-        echo "⚠️  Node already exists for this wallet."
-        # Check if we have cached credentials
+    # Check for "node already exists" in the log file we just wrote
+    if tail -n 50 "$LOG_FILE" | grep -q "node already exists for this wallet"; then
+        echo ""
+        echo "⚠️  WALLET CONFLICT: A node already exists for this wallet address."
         if [[ -f "$CREDS_FILE" ]]; then
-            echo "♻️  Using cached credentials to reconnect..."
+            echo "♻️  Found cached credentials. Reconnecting with existing node..."
             mkdir -p "$SKILL_DIR/state"
             cp "$CREDS_FILE" "$SKILL_DIR/state/credentials.json"
             CACHED_NODE_ID=$(jq -r '.nodeId // .node_id // empty' "$SKILL_DIR/state/credentials.json" 2>/dev/null || echo "")
             CACHED_API_KEY=$(jq -r '.apiKey // .api_key // empty' "$SKILL_DIR/state/credentials.json" 2>/dev/null || echo "")
             if [[ -n "$CACHED_NODE_ID" ]] && [[ -n "$CACHED_API_KEY" ]]; then
-                echo "🔑 Loaded cached Node ID: $CACHED_NODE_ID"
+                echo "🔑 Using cached Node ID: $CACHED_NODE_ID"
                 export RMB_API_KEY="$CACHED_API_KEY"
-                echo "✅ Reconnected with existing credentials"
+                echo "✅ Ready to use existing node"
                 CONNECT_EXIT=0
             fi
         else
-            echo "📝 No cached credentials for this wallet. Falling back to auto-generated wallet..."
-            echo "⚠️  Unsetting RMB_WALLET_ADDRESS to allow auto-generation"
+            echo "📝 No cached credentials found. Falling back to auto-generated wallet..."
             unset RMB_WALLET_ADDRESS
-            # Retry connect.sh without the custom wallet
+            echo "🔄 Retrying connection without custom wallet address..."
             bash "$SKILL_DIR/scripts/connect.sh" 2>&1 | tee -a "$LOG_FILE"
             CONNECT_EXIT=$?
         fi
