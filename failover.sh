@@ -46,6 +46,8 @@ if [[ -z "${RMB_API_KEY:-}" ]]; then
     exit 1
 fi
 echo "✅ RMB API key found"
+echo "🔍 DEBUG: RMB_API_KEY length = ${#RMB_API_KEY} chars"
+echo "🔍 DEBUG: RMB_API_KEY first 5 chars = ${RMB_API_KEY:0:5}..."
 
 # ── 2. Install OpenClaw ──────────────────────────────────────
 if ! command -v openclaw &>/dev/null; then
@@ -174,10 +176,16 @@ echo "✅ Skill is in ~/.openclaw/skills/ — auto-loaded by OpenClaw"
 sleep 3
 
 echo "🌐 Connecting node to Rent My Browser marketplace..."
+echo "🔍 DEBUG: About to call connect.sh"
+echo "🔍 DEBUG: SKILL_DIR = $SKILL_DIR"
+echo "🔍 DEBUG: RMB_API_KEY set = $([ -z "${RMB_API_KEY:-}" ] && echo 'NO' || echo 'YES')"
 export RMB_API_KEY
 bash "$SKILL_DIR/scripts/connect.sh" 2>&1 | tee -a "$LOG_FILE"
-if [[ $? -ne 0 ]]; then
-    echo "❌ Failed to connect to marketplace. Check $LOG_FILE."
+CONNECT_EXIT=$?
+if [[ $CONNECT_EXIT -ne 0 ]]; then
+    echo "❌ Failed to connect to marketplace (exit code: $CONNECT_EXIT). Check $LOG_FILE."
+    echo "🔍 DEBUG: Last 50 lines of log:"
+    tail -n 50 "$LOG_FILE"
     exit 1
 fi
 echo "✅ Node connected — polling for tasks every 10s"
